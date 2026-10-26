@@ -1,6 +1,7 @@
 import numpy as np
 import scipy
 from scipy.special import expit
+import scipy.sparse  
 
 
 class BaseSmoothOracle(object):
@@ -82,15 +83,33 @@ class LogRegL2Oracle(BaseSmoothOracle):
 
     def func(self, x):
         # TODO: Implement
-        return None
+
+        z = self.b * self.A.dot(x)
+        return float(np.sum(np.logaddexp(0.0, -z)) / self._m + self.regcoef / 2.0 * np.dot(x, x))
 
     def grad(self, x):
         # TODO: Implement
-        return None
+
+        z = self.b * self.A.dot(x)
+        s = expit(-z)
+        return -self.A.T.dot(self.b * s) / self._m + self.regcoef * x
 
     def hess(self, x):
         # TODO: Implement
-        return None
+
+        z = self.b * self.A.dot(x)
+        sig = expit(-z)
+        s = sig * (1.0 - sig)
+
+        if scipy.sparse.issparse(self.A):
+            A_scaled = self.A.multiply(s[:, None])
+            H = A_scaled.T.dot(self.A)
+            H = H.toarray()
+        else:
+            A_scaled = self.A * s[:, None]
+            H = A_scaled.T.dot(self.A)
+
+        return H / self._m + self.regcoef * np.eye(self.A.shape[1])
 
 
 def grad_finite_diff(func, x, eps=1e-8):
@@ -102,7 +121,18 @@ def grad_finite_diff(func, x, eps=1e-8):
                           >> i <<
     """
     # TODO: Implement numerical estimation of the gradient
-    return None
+
+    x = np.asarray(x, dtype=float)
+    n = x.size
+    result = np.zeros(n)
+    fx = func(x)
+
+    for i in range(n):
+        e_i = np.zeros(n)
+        e_i[i] = 1.0
+        result[i] = (func(x + eps * e_i) - fx) / eps
+
+    return result
 
 
 def hess_finite_diff(func, x, eps=1e-5):
@@ -117,4 +147,24 @@ def hess_finite_diff(func, x, eps=1e-5):
                           >> i <<
     """
     # TODO: Implement numerical estimation of the Hessian
-    return None
+
+    x = np.asarray(x, dtype=float)
+    n = x.size
+    result = np.zeros((n, n))
+    fx = func(x)
+
+    E = np.eye(n) * eps
+    f_plus = np.zeros(n)
+    for i in range(n):
+        f_plus[i] = func(x + E[i])
+
+    for i in range(n):
+        for j in range(n):
+            result[i, j] = (
+                func(x + E[i] + E[j])
+                - f_plus[i]
+                - f_plus[j]
+                + fx
+            ) / (eps ** 2)
+
+    return result
