@@ -103,13 +103,17 @@ class LogRegL2Oracle(BaseSmoothOracle):
 
         if scipy.sparse.issparse(self.A):
             A_scaled = self.A.multiply(s[:, None])
-            H = A_scaled.T.dot(self.A)
-            H = H.toarray()
+            H = A_scaled.T.dot(self.A).toarray()
         else:
             A_scaled = self.A * s[:, None]
             H = A_scaled.T.dot(self.A)
 
-        return H / self._m + self.regcoef * np.eye(self.A.shape[1])
+        # --- ОПТИМИЗАЦИЯ ПАМЯТИ ---
+        H /= self._m
+        idx = np.diag_indices_from(H)
+        H[idx] += self.regcoef
+        
+        return H
 
 
 def grad_finite_diff(func, x, eps=1e-8):
